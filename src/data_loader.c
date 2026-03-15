@@ -63,3 +63,29 @@ void normalize_data(float *data, int rows, int cols, int target_col, float *out_
     *out_min = min;
     *out_max = max;
 }
+
+
+void normalize_all_data(float *data, int rows, int cols, int target_col, float *out_min, float *out_max) {
+    // 1. First, find min/max for EVERY column and normalize them
+    for (int j = 1; j < cols; j++) {
+        float min = data[j];
+        float max = data[j];
+
+        for (int i = 0; i < rows; i++) {
+            float val = data[i * cols + j];
+            if (val < min) min = val;
+            if (val > max) max = val;
+        }
+
+        // 2. If this is our TARGET column (Close), save the values for main.c
+        if (j == target_col) {
+            *out_min = min;
+            *out_max = max;
+        }
+
+        // 3. Actually scale the data
+        for (int i = 0; i < rows; i++) {
+            data[i * cols + j] = (data[i * cols + j] - min) / (max - min + 1e-7);
+        }
+    }
+}

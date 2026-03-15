@@ -13,6 +13,8 @@ RNN* init_rnn(int in, int hid, int out);
 // Processes a full sequence and stores all hidden states for later BPTT
 void rnn_forward(RNN *net, float *input_seq, int seq_len, float *h_history, float *y_out);
 void rnn_backward(RNN *net, float *input_seq, float *h_history, float *y_errors, int seq_len, float lr);
+void save_weights(RNN *net, const char *filename);
+void load_weights(RNN *net, const char *filename);
 void free_rnn(RNN *net);
 
 #endif
