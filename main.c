@@ -1,70 +1,93 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <time.h>
 #include "rnn.h"
+#include "utils.h"
+
+// Define these based on your silver.csv structure
+#define WINDOW_SIZE 10    // Number of past days to look at
+#define FEATURE_COL 3     // Assuming 'Close' price is column 3
+#define EPOCHS 100
+#define LEARNING_RATE 0.01f
+
+// Helper to calculate Mean Squared Error loss
+float calculate_mse(float pred, float target) {
+    return 0.5f * powf(pred - target, 2);
+}
 
 int main() {
-    
-    int rows, cols;
-    float *train_data = load_csv("data/silver.csv", &rows, &cols);
-
-    if (train_data) {
-    printf("Loaded %d rows and %d columns from silver.csv\n", rows, cols);
-    // Proceed to forward pass with train_data...
-}
-    // 1. Setup Seed for reproducibility (using time for now)
     srand(time(NULL));
 
-    // 2. Hyperparameters
-    int input_dim = 3;    // e.g., 3 features per time step
-    int hidden_dim = 5;   // 5 "memory" neurons
-    int output_dim = 2;   // 2 possible output categories
-    int seq_len = 4;      // A short sequence of 4 time steps
+    // 1. Load and Preprocess Data
+    int rows, cols;
+    printf("Loading silver.csv...\n");
+    float *data = load_csv("data/silver.csv", &rows, &cols);
+    if (!data) return 1;
 
-    // 3. Memory Allocation for sequence data
-    // Input: seq_len * input_dim
-    float *input_seq = malloc(seq_len * input_dim * sizeof(float));
-    // Hidden History: seq_len * hidden_dim (CRITICAL for BPTT later)
-    float *h_history = malloc(seq_len * hidden_dim * sizeof(float));
-    // Output: seq_len * output_dim
-    float *y_out = malloc(seq_len * output_dim * sizeof(float));
+    // Normalizing is required for tanh stability
+    normalize_data(data, rows, cols);
 
-    // 4. Fill dummy input with random values
-    printf("--- Input Sequence ---\n");
-    for (int t = 0; t < seq_len; t++) {
-        printf("t=%d: [ ", t);
-        for (int i = 0; i < input_dim; i++) {
-            input_seq[t * input_dim + i] = (float)rand() / RAND_MAX;
-            printf("%.2f ", input_seq[t * input_dim + i]);
+    // 2. Initialize RNN
+    // input_dim = 1 (we are just looking at the price)
+    // output_dim = 1 (predicting the next price)
+    int input_dim = 1;
+    int hidden_dim = 16;
+    int output_dim = 1;
+    RNN *net = init_rnn(input_dim, hidden_dim, output_dim);
+
+    printf("Starting training on %d rows...\n", rows);
+
+    // 3. Training Loop
+    for (int epoch = 0; epoch < EPOCHS; epoch++) {
+        float epoch_loss = 0;
+        int count = 0;
+
+        // Iterate through data using a sliding window
+        for (int i = 0; i < rows - WINDOW_SIZE - 1; i++) {
+            // Memory for this specific sequence
+            float *h_history = calloc(WINDOW_SIZE * hidden_dim, sizeof(float));
+            float *y_out = calloc(WINDOW_SIZE * output_dim, sizeof(float));
+            float *y_errors = calloc(WINDOW_SIZE * output_dim, sizeof(float));
+            
+            // Extract the window of input features
+            float *x_window = malloc(WINDOW_SIZE * input_dim * sizeof(float));
+            for (int t = 0; t < WINDOW_SIZE; t++) {
+                x_window[t] = data[(i + t) * cols + FEATURE_COL];
+            }
+
+            // Target is the price of the DAY AFTER the window ends
+            float target = data[(i + WINDOW_SIZE) * cols + FEATURE_COL];
+
+            // --- FORWARD PASS ---
+            rnn_forward(net, x_window, WINDOW_SIZE, h_history, y_out);
+
+            // Calculate error only for the last prediction in the sequence (Many-to-One)
+            float final_pred = y_out[(WINDOW_SIZE - 1) * output_dim];
+            y_errors[(WINDOW_SIZE - 1) * output_dim] = final_pred - target;
+            
+            epoch_loss += calculate_mse(final_pred, target);
+
+            // --- BACKWARD PASS (BPTT) ---
+            rnn_backward(net, x_window, h_history, y_errors, WINDOW_SIZE, LEARNING_RATE);
+
+            // Cleanup step memory
+            free(x_window);
+            free(h_history);
+            free(y_out);
+            free(y_errors);
+            count++;
         }
-        printf("]\n");
+
+        if (epoch % 10 == 0) {
+            printf("Epoch %d: Average Loss = %f\n", epoch, epoch_loss / count);
+        }
     }
 
-    // 5. Initialize Model
-    RNN *my_rnn = init_rnn(input_dim, hidden_dim, output_dim);
-    printf("\nRNN Structure: %d (In) -> %d (Hidden) -> %d (Out)\n", 
-           input_dim, hidden_dim, output_dim);
+    printf("Training Complete.\n");
 
-    // 6. Run Forward Pass
-    printf("\nRunning Forward Pass...\n");
-    rnn_forward(my_rnn, input_seq, seq_len, h_history, y_out);
-
-    // 7. Inspect Output
-    printf("\n--- Model Output (y_t) ---\n");
-    for (int t = 0; t < seq_len; t++) {
-        printf("t=%d: [ ", t);
-        for (int i = 0; i < output_dim; i++) {
-            printf("%.4f ", y_out[t * output_dim + i]);
-        }
-        printf("]\n");
-    }
-
-    // 8. Cleanup
-    free(input_seq);
-    free(h_history);
-    free(y_out);
-    free_rnn(my_rnn);
-
-    printf("\nSuccess! The forward pass executed without crashing.\n");
+    // 4. Cleanup
+    free_rnn(net);
+    free(data);
 
     return 0;
 }

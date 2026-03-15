@@ -57,9 +57,83 @@ void rnn_forward(RNN *net, float *input_seq, int seq_len, float *h_history, floa
     }
     free(prev_h);
 }
+void rnn_backward(RNN *net, float *input_seq, float *h_history, float *y_errors, int seq_len, float lr) {
+    int h_dim = net->hidden_dim;
+    int in_dim = net->input_dim;
+    int out_dim = net->output_dim;
+
+    // Gradient buffers (initialized to zero)
+    float *dWxh = calloc(h_dim * in_dim, sizeof(float));
+    float *dWhh = calloc(h_dim * h_dim, sizeof(float));
+    float *dWhy = calloc(out_dim * h_dim, sizeof(float));
+    float *dbh  = calloc(h_dim, sizeof(float));
+    float *dby  = calloc(out_dim, sizeof(float));
+
+    // The "hidden error" that propagates backwards through time
+    float *dh_next = calloc(h_dim, sizeof(float));
+
+    for (int t = seq_len - 1; t >= 0; t--) {
+        // 1. Output gradients (dy = y_pred - y_true)
+        float *dy = &y_errors[t * out_dim];
+        float *ht = &h_history[t * h_dim];
+
+        // Gradient for Why and by
+        for (int i = 0; i < out_dim; i++) {
+            for (int j = 0; j < h_dim; j++) {
+                dWhy[i * h_dim + j] += dy[i] * ht[j];
+            }
+            dby[i] += dy[i];
+        }
+
+        // 2. Hidden State gradient (dh)
+        // dh = (Why^T * dy) + dh_next
+        float *dh = malloc(h_dim * sizeof(float));
+        for (int i = 0; i < h_dim; i++) {
+            dh[i] = dh_next[i];
+            for (int j = 0; j < out_dim; j++) {
+                dh[i] += net->Why[j * h_dim + i] * dy[j];
+            }
+        }
+
+        // 3. Backprop through tanh: dh_raw = dh * (1 - ht^2)
+        float *dh_raw = malloc(h_dim * sizeof(float));
+        for (int i = 0; i < h_dim; i++) {
+            dh_raw[i] = dh[i] * (1.0f - ht[i] * ht[i]);
+        }
+
+        // 4. Input and Hidden weight gradients
+        float *xt = &input_seq[t * in_dim];
+        float *h_prev = (t > 0) ? &h_history[(t - 1) * h_dim] : calloc(h_dim, sizeof(float));
+
+        for (int i = 0; i < h_dim; i++) {
+            for (int j = 0; j < in_dim; j++) dWxh[i * in_dim + j] += dh_raw[i] * xt[j];
+            for (int j = 0; j < h_dim; j++) dWhh[i * h_dim + j] += dh_raw[i] * h_prev[j];
+            dbh[i] += dh_raw[i];
+        }
+
+        // Update dh_next for the next (previous) time step
+        for (int i = 0; i < h_dim; i++) {
+            dh_next[i] = 0;
+            for (int j = 0; j < h_dim; j++) {
+                dh_next[i] += net->Whh[j * h_dim + i] * dh_raw[j];
+            }
+        }
+        
+        free(dh); free(dh_raw);
+        if (t == 0) free(h_prev);
+    }
+
+    // 5. Update Weights (Stochastic Gradient Descent)
+    for (int i = 0; i < h_dim * in_dim; i++) net->Wxh[i] -= lr * dWxh[i];
+    for (int i = 0; i < h_dim * h_dim; i++) net->Whh[i] -= lr * dWhh[i];
+    for (int i = 0; i < out_dim * h_dim; i++) net->Why[i] -= lr * dWhy[i];
+    // (Repeat for bh and by)
+
+    free(dWxh); free(dWhh); free(dWhy); free(dbh); free(dby); free(dh_next);
+}
 
 void free_rnn(RNN *net) {
     free(net->Wxh); free(net->Whh); free(net->Why);
     free(net->bh); free(net->by);
     free(net);
-}
+}   
