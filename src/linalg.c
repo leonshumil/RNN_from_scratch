@@ -1,4 +1,5 @@
 #include "linalg.h"
+#include <stdlib.h>
 
 void vec_add(float *a, const float *b, int size) {
     for (int i = 0; i < size; i++) {

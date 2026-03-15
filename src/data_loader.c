@@ -43,15 +43,23 @@ float* load_csv(const char* filename, int *rows, int *cols) {
     fclose(file);
     return data;
 }
-void normalize_data(float *data, int rows, int cols) {
-    for (int j = 0; j < cols; j++) {
-        float min = data[j], max = data[j];
-        for (int i = 0; i < rows; i++) {
-            if (data[i * cols + j] < min) min = data[i * cols + j];
-            if (data[i * cols + j] > max) max = data[i * cols + j];
-        }
-        for (int i = 0; i < rows; i++) {
-            data[i * cols + j] = (data[i * cols + j] - min) / (max - min + 1e-7);
-        }
+void normalize_data(float *data, int rows, int cols, int target_col, float *out_min, float *out_max) {
+    float min = data[target_col];
+    float max = data[target_col];
+
+    // Find min/max for the specific column we are predicting
+    for (int i = 0; i < rows; i++) {
+        float val = data[i * cols + target_col];
+        if (val < min) min = val;
+        if (val > max) max = val;
     }
+
+    // Perform the normalization across the whole dataset (or just that column)
+    for (int i = 0; i < rows * cols; i++) {
+        // Simple global scaling for this example
+        data[i] = (data[i] - min) / (max - min + 1e-7);
+    }
+
+    *out_min = min;
+    *out_max = max;
 }

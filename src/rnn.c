@@ -1,6 +1,25 @@
-#include "rnn.h"
+#include "rnn.h"   
+#include "linalg.h"
+#include "utils.h"
+#include <stdio.h>    
+#include <stdlib.h>
 #include <string.h>
+#include <math.h>  
 
+void load_weights(RNN *net, const char *filename) {
+    FILE *f = fopen(filename, "rb");
+    if (!f) {
+        perror("Failed to open file for loading");
+        return;
+    }
+    fread(net->Wxh, sizeof(float), net->hidden_dim * net->input_dim, f);
+    fread(net->Whh, sizeof(float), net->hidden_dim * net->hidden_dim, f);
+    fread(net->Why, sizeof(float), net->output_dim * net->hidden_dim, f);
+    fread(net->bh, sizeof(float), net->hidden_dim, f);
+    fread(net->by, sizeof(float), net->output_dim, f);
+    fclose(f);
+    printf("Weights and biases loaded from %s\n", filename);
+}
 RNN* init_rnn(int in, int hid, int out) {
     RNN *net = malloc(sizeof(RNN));
     net->input_dim = in;
