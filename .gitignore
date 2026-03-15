@@ -1,0 +1,20 @@
+# Compiled Binaries
+rnn_project
+*.exe
+*.out
+
+# Object Files
+*.o
+src/*.o
+obj/
+
+# Data and Logs
+*.log
+# If you want to keep the CSV on GitHub, don't ignore it. 
+# But ignore any temporary results:
+results.txt
+
+# OS and IDE files
+.DS_Store
+.vscode/
+.idea/
